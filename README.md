@@ -47,4 +47,4 @@ The trade-off is that traffic between the proxy and the backend isn't encrypted.
 
 ## ⚠️ Disclaimer
 
-I used AI to create the template.
+I used AI to create this template and to write test script.
