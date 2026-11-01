@@ -1,0 +1,33 @@
+services:
+  httpbin:
+    image: ghcr.io/mccutchen/go-httpbin:latest
+    environment:
+      PORT: 8081
+    networks:
+      - internal
+    restart: unless-stopped
+
+  proxy:
+    image: nginx:latest
+    ports:
+      - "80:80"
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is not set, see .env.example}
+      JWT_TTL: ${JWT_TTL:-3600}
+      LOGIN_USERNAME: ${LOGIN_USERNAME:?LOGIN_USERNAME is not set, see .env.example}
+      LOGIN_PASSWORD: ${LOGIN_PASSWORD:?LOGIN_PASSWORD is not set, see .env.example}
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/jwt.js:/etc/nginx/njs/jwt.js:ro
+    networks:
+      - public
+      - internal
+    depends_on:
+      - httpbin
+    restart: unless-stopped
+
+networks:
+  # Used only to publish the proxy's port 80 on the host.
+  public:
+  internal:
+    internal: true
