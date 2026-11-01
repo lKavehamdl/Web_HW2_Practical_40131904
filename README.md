@@ -45,6 +45,66 @@ The idea behind TLS termination is that we don't want to touch the old service, 
 
 The trade-off is that traffic between the proxy and the backend isn't encrypted. If the internal network can't be fully trusted, you can use TLS re-encryption (the proxy opens a new TLS connection to the backend) or mutual TLS. For a legacy service sitting on a private network behind the proxy, plain termination is usually good enough.
 
+## Question 3
+
+**Answer:**
+
+I used **Nginx** as the reverse proxy. Open-source Nginx can't check JWTs on its own (that's only in Nginx Plus), so I wrote the token check in **njs**, the JavaScript module that ships with the official Nginx image.
+
+### How it works
+
+There are two containers, defined in `compose.yaml`:
+
+- **httpbin**: the legacy service. It runs on port 8081, publishes no ports and is only on the `internal` network, so it can't be reached from outside.
+- **proxy**: Nginx. It's the only container that publishes a port (80), and it's on both networks so it can forward requests to httpbin.
+
+When a request comes in:
+
+1. `POST /login` with a username and password returns a signed JWT (HS256).
+2. Every other request first goes through `auth_request` to an internal location that runs `verify` in `jwt.js`. It checks the `Authorization: Bearer <token>` header, the signature and the expiry time.
+3. If the token is valid, the request is forwarded to httpbin. Otherwise Nginx returns `401`.
+
+### Project structure
+
+```
+compose.yaml       # httpbin + nginx, and the two networks
+nginx/nginx.conf   # proxy config
+nginx/jwt.js       # token check and /login
+.env.example       # settings template
+test.sh            # end-to-end test
+```
+
+### How to run
+
+```bash
+cp .env.example .env    # then set JWT_SECRET and LOGIN_PASSWORD
+docker compose up -d
+```
+
+Get a token and use it:
+
+```bash
+curl -X POST -d '{"username":"admin","password":"<your password>"}' http://localhost/login
+curl -H "Authorization: Bearer <token>" http://localhost/get
+```
+
+Without a token, or with an invalid or expired one, you get `401`.
+
+### How to test
+
+```bash
+./test.sh
+```
+
+The script starts the services, runs all the checks, prints each result with the response it got, and then shuts everything down. It doesn't need a `.env`, but port 80 has to be free. It needs `docker`, `curl` and `openssl`.
+
+It checks that:
+
+- login works only with the right credentials
+- requests with no token, or with a wrong, forged, expired or unsigned token, are blocked
+- requests with a valid token reach httpbin
+- httpbin can't be reached from the host directly, only through the proxy
+
 ## ⚠️ Disclaimer
 
 I used AI to create this template and to write test script.
